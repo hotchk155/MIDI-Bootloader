@@ -1,0 +1,21 @@
+[Settings]
+Active Directory=D:\GitHub\MIDI-Bootloader\
+Target=PIC16F1825
+Active Compiler=BoostC
+Active Config=Debug
+Type=0
+Warnings=1
+Model=0
+Config=1
+[Files]
+Count=1
+File0=MIDI-Bootloader.c
+[Browser]
+UseSysHeaders=1
+UseNovoHeaders=1
+[Tools]
+BoostDir=C:\Program Files (x86)\SourceBoost\
+Programmer=
+PrefixWithBuildThreadNum=0
+[Debugger]
+DebugFromMain=1

@@ -1,20 +1,35 @@
+/////////////////////////////////////////////////////////////////////////////////////////
+//
+// SIXTY FOUR PIXELS - MIDI BOOTLOADER FOR PIC16F1825
+//
+// 2016/hotchk155
+//
+// SourceBoost C
+// Use linker option: -rb 0x1E25
+//
+// Bootloader code is loaded to high memory (address 0x1e25)
+// Block from 0x1e20..0x01e24 contains the saved firmware reset vector
+//
+// Firmware provided in a MIDI System Exclusive file with 32 words (64 bytes) 
+// of program code per sysex buffer. 
+// Sysex "manufacturer ID" is 0x00 0x7F 0x12
+// 1 byte sequence number 1..127 between ID and program data
+// Sequence number increments for each buffer
+// Final buffer is marked by zero sequence number
+// 
+// [0xF0] [0x00] [0x7F] [0x12] [0x01] [data0] ... [data63] [0xF7]
+// [0xF0] [0x00] [0x7F] [0x12] [0x02] [data0] ... [data63] [0xF7]
+// [0xF0] [0x00] [0x7F] [0x12] [0x03] [data0] ... [data63] [0xF7]
+// [0xF0] [0x00] [0x7F] [0x12] [nnnn] [data0] ... [data63] [0xF7]
+// [0xF0] [0x00] [0x7F] [0x12] [0x00] [dummy0] ... [dummy63] [0xF7]
+// 
+/////////////////////////////////////////////////////////////////////////////////////////
+
+//
+// INCLUDE FILES
+//
 #include <system.h>
-
-/*
-PIC16F1825
-14K FLASH = 14336 bytes (0x3800)
-Bootloader page will be at 0x3700 
-Bootloader code will begin at 0x3705
-
-SYSEX FILE
-
-0xF0 0x00 0x7F 0x12
-[hh ll][hh ll][hh ll][hh ll][hh ll]....
- len    addrh  addrl  data0  data1...
-0xF7
-
-*/
-
+#include <memory.h>
 
 // PIC CONFIG BITS
 // - RESET INPUT DISABLED
@@ -24,236 +39,283 @@ SYSEX FILE
 #pragma DATA _CONFIG2, _WRT_OFF & _PLLEN_OFF & _STVREN_ON & _BORV_19 & _LVP_OFF
 #pragma CLOCK_FREQ 16000000
 
-// Replacement reset vector to take us into the bootloader
-// 0x0000	31B7  	MOVLP 0x37
-// 0x0001	2805  	GOTO	0x00000005
-// 0x0002	0000 	NOP
-// 0x0003	0000 	NOP
-#pragma DATA 0x0000, 0x31b7, 0x2805, 0x0000, 0x0000
+// Replacement reset vector to take us into the bootloader at address 0x1E30. 
+//	0x0000	0x319E  MOVLP 0x1E  
+//	0x0001	0x2E25  GOTO  0x625 <-- lower 11 bits of address
+//	0x0002	0x0000  NOP
+//	0x0003	0x0000  NOP
+#pragma DATA 0x0000, 0x319E, 0x2E25, 0x0000, 0x0000
 
 // Initial data for the location that will store the application reset vector
-//  0x3700 	018A 	CLRF PCLATH	(ensure relative jump is within page 0)
-//	0x3701 	0000 	NOP			(replaced by original reset vector byte 0)
-//  0x3702 	0000 	NOP			(replaced by original reset vector byte 1)
-//	0x3703 	CLRF 	PCLATH		(replaced by original reset vector byte 2)
-//	0x3704 	CLRF 	PCL			(replaced by original reset vector byte 3)
-// 	0x3705 	..bootloader..
-#pragma DATA 0x3700, 0x018A, 0x0000, 0x0000, 0x018A, 0x0082
+//  0x1E20 	018A 	CLRF PCLATH	(ensure relative jump is within page 0)
+//	0x1E21 	0000 	NOP			(replaced by original reset vector byte 0)
+//  0x1E22 	0000 	NOP			(replaced by original reset vector byte 1)
+//	0x1E23 	CLRF 	PCLATH		(replaced by original reset vector byte 2)
+//	0x1E24 	CLRF 	PCL			(replaced by original reset vector byte 3)
+// 	0x1E25 	..bootloader..
+#pragma DATA 0x1E20, 0x018A, 0x0000, 0x0000, 0x018A, 0x0082
 
-#define BOOTLOADER_ADDR_HI 0x37
+//
+// CONSTANTS
+//
+#define P_LED1				lata.2
+#define P_LED2				latc.2
+#define P_SWITCH 			portc.3
 
+#define MIDI_SYSEX_BEGIN    0xf0
+#define MIDI_SYSEX_END     	0xf7
+#define MY_SYSEX_ID0		0x00
+#define MY_SYSEX_ID1		0x7f
+#define MY_SYSEX_ID2		0x12
+
+#define SAVED_RESET_VECTOR 	0x1E20 
+
+//
+// TYPE DEFS
+//
 typedef unsigned char byte;	
 
-#define P_LED1		lata.2
-#define P_LED2		latc.2
-#define P_SWITCH portc.3
+// Define the structure of the sysex buffers containing firmware update
+struct {
+	byte begin;		// sysex start marker
+	byte id0;		// manufacturer id 0 (0x00 = extended id)
+	byte id1;		// manufacturer id 1
+	byte id2;		// manufacturer id 2
+	byte seq;		// 1..127 = incrementing sequence number, 0 = end of data
+	byte data[64];	// data buffer for program memory (for sysex each 14 bit word is translated to 2 bytes 0..127)
+	byte end;		// sysex end marker
+} buffer;
 
-#define MIDI_SYNCH_TICK     	0xf8
-#define MIDI_SYNCH_START    	0xfa
-#define MIDI_SYNCH_CONTINUE 	0xfb
-#define MIDI_SYNCH_STOP     	0xfc
-#define MIDI_SYSEX_BEGIN     	0xf0
-#define MIDI_SYSEX_END     		0xf7
+//
+// GLOBAL DATA
+//
 
-#define MY_SYSEX_ID0	0x00
-#define MY_SYSEX_ID1	0x7f
-#define MY_SYSEX_ID2	0x12
+// Temporary storage location for the booloader's reset vector
+byte bootloader_reset[8];
 
-enum {
-	SYSEX_IDLE, 
-	SYSEX_IGNORE, 
-	SYSEX_ID0,
-	SYSEX_ID1,
-	SYSEX_ID2,
-	SYSEX_DATAHI,
-	SYSEX_DATALO
-};
-				
-				
-enum {
-	HEX_LEN,
-	HEX_ADDRH,
-	HEX_ADDRL,
-	HEX_DATA
-};
+// Temporary storage location for the firmware's reset vector
+byte firmware_reset[8];
 
+// Address register for program memory read and write operations
+int addr;
 
-void error() 
+// Working variables
+byte i;
+byte seq;
+
+////////////////////////////////////////////////////////
+// READ A ROW OF FLASH MEMORY 
+// The source address is in the addr variable and must
+// be on a flash row boundary (32 words)
+// The data is read into 64 byte array buffer.data
+void read_flash() 
+{	
+	eecon1.CFGS = 0; 		// not config space
+	eecon1.EEPGD = 1; 		// program memory
+
+	eeadrl = (byte)addr;	// store address low byte
+	eeadrh = (addr >> 8);	// store address high byte
+	
+	// Loop through all 32 words -> 64 bytes
+	for(i=0; i<64; i+=2) 
+	{	
+		// read flash
+		eecon1.RD = 1; 	
+		nop();
+		nop();
+	
+		// store to buffer in RAM
+		buffer.data[i] = eedath;
+		buffer.data[i+1] = eedatl;
+		
+		// next word
+		++eeadrl;
+	}
+}
+
+////////////////////////////////////////////////////////
+// ERASE AND WRITE A ROW OF FLASH MEMORY
+// The target address is in the addr variable and must
+// be on a flash row boundary (32 words)
+// The data is read from 64 byte array buffer.data
+void write_flash()
 {
+	// ensure address is on 32-byte flash row boundary
+	eeadrl = (addr & 0xE0);
+	eeadrh = (addr >> 8);
+	
+	eecon1.CFGS = 0; 	// not config space
+	eecon1.EEPGD = 1; 	// program memory
+	eecon1.FREE = 1;	// erase operation
+	eecon1.WREN = 1;	// enable write
+	
+	// ERASE ROW OF FLASH
+	eecon2 = 0x55;		
+	eecon2 = 0xAA;		
+	eecon1.WR = 1;	
+	nop();
+	nop();			
+	
+	// LOAD THE WRITE LATCHES FOR THE ROW
+	eecon1.LWLO = 1;	
+	for(i=0; i<64; i+=2) 
+	{
+		eedatl = buffer.data[i+1];
+		eedath = buffer.data[i];
+		eecon2 = 0x55;
+		eecon2 = 0xAA;		// special unlock sequence
+		eecon1.WR = 1;		// start write
+		nop();
+		nop();				// NOPs needed during erase
+		++eeadrl;
+	}
+	eecon1.LWLO = 0;	// finished with the latches
+
+	// PERFORM THE WRITE TO FLASH
+	eeadrl = (addr & 0xE0);
+	eeadrh = (addr >> 8);
+	eedatl = buffer.data[1];
+	eedath = buffer.data[0];	
+	eecon2 = 0x55;
+	eecon2 = 0xAA;		// special unlock sequence
+	eecon1.WR = 1;		// start write
+	nop();
+	nop();				// NOPs needed during erase
+	
+	eecon1.WREN = 0;	// disable writes
+}
+
+////////////////////////////////////////////////////////
+// ERROR INDICATION
+void error(byte b) 
+{
+	P_LED1 = 0;
+	for(;;) {
+		for(i=0; i<b; ++i) {
+			P_LED2 = 1;
+			delay_ms(200);
+			P_LED2 = 0;
+			delay_ms(200);
+		}		
+		delay_ms(255);
+		delay_ms(255);
+	}
+}
+
+////////////////////////////////////////////////////////
+// SUCCESS INDICATION
+void success() {
 	for(;;) {
 		P_LED1 = 1;
 		P_LED2 = 0;
 		delay_ms(100);
 		P_LED1 = 0;
 		P_LED2 = 1;
-		delay_ms(100);
+		delay_ms(100);		
 	}
 }
 
-// Keep data global to avoid leaving anything on stack
-byte ch;
-byte data;
-byte sysex_state; 
-byte hex_state;
-byte bytes_to_read;
-byte addr_h;
-byte addr_l;
-
-		
-void read_sysex()
+////////////////////////////////////////////////////////
+// READ SYSEX FILE
+void read_sysex() 
 {
-	P_LED1 = 0;
-	P_LED1 = 1;
-	sysex_state = SYSEX_IDLE;
+	seq = 1;
+	
+	// Start by saving the bootloader reset vector. We
+	// will replace the firmware reset vector with this
+	addr = 0x0000;
+	read_flash();
+	memcpy(bootloader_reset, &buffer.data, 8); 
 
-	// loop until we've got our sysex 
+	P_LED1 = 1;
+	P_LED2 = 1;
+
+	// there is no way back...
 	for(;;) {
 			
-		// is a character present at serial port?
-		if(pir1.5) {  
-		
-			// read character, clearing flag
-			ch = rcreg; 
-			
-			// is this a realtime/system message?
-			if((ch & 0xf0) == 0xf0)
-			{
-				switch(ch)
-				{
-				// REALTIME
-				case MIDI_SYNCH_TICK:
-				case MIDI_SYNCH_START:
-				case MIDI_SYNCH_CONTINUE:
-				case MIDI_SYNCH_STOP:
-					// ok, we'll let this one go!
-					break;	
-				// START OF SYSEX
-				case MIDI_SYSEX_BEGIN:
-					if(sysex_state != SYSEX_IDLE)						
-						error(); // not valid here
-					sysex_state = SYSEX_ID0; 
-					break;
-				case MIDI_SYSEX_END:
-					switch(sysex_state) {
-						case SYSEX_IGNORE:
-						case SYSEX_IDLE: 				
-							break;			
-						case SYSEX_DATAHI:
-							if(hex_state == HEX_LEN) {
-								return; // the only valid state to end up in!								
-							}
-							// fall thru
-						default:
-							error();
-					}
-				}
-			}    
-			else if(!!(ch & 0x80)) // channel status
-			{
-				// status byte invalid in syste
-				switch(sysex_state) {
-				case SYSEX_IDLE:
-				case SYSEX_IGNORE: 
-					break;
-				default:
-					error();
-					break;
-				}
-			}
-			else switch(sysex_state) {
-			case SYSEX_IDLE: 
-			case SYSEX_IGNORE: 
-				// ignore data
-				break;
-			case SYSEX_ID0: // Checking manufacturer id byte #0
-				if(ch == MY_SYSEX_ID0)
-					sysex_state = SYSEX_ID1;
-				else
-					sysex_state = SYSEX_IGNORE;
-				break;
-			case SYSEX_ID1: // Checking manufacturer id byte #1
-				if(ch == MY_SYSEX_ID1)
-					sysex_state = SYSEX_ID2;
-				else
-					sysex_state = SYSEX_IGNORE;
-				break;
-			case SYSEX_ID2: // Checking manufacturer id byte #2
-				if(ch == MY_SYSEX_ID2) {
-					hex_state = HEX_LEN;
-					sysex_state = SYSEX_DATAHI;
-					P_LED1 = 1;
-					P_LED1 = 1;
-				}
-				else {
-					sysex_state = SYSEX_IGNORE;
-				}				
-				break;
-			case SYSEX_DATAHI: // Reading data. High nybble
-				data = ch << 4;
-				sysex_state = SYSEX_DATALO;
-				break;
-			case SYSEX_DATALO: // Reading data. Low nybble, now we can process it
-				data |= (ch & 0x0f);
-				sysex_state = SYSEX_DATAHI;
-				switch(hex_state) {
-				case HEX_LEN:	// getting record length
-					bytes_to_read = data;
-					hex_state = HEX_ADDRH;
-					break;	
-				case HEX_ADDRH:	// getting high byte of address
-					addr_h = data;
-					hex_state = HEX_ADDRL;
-					break;
-				case HEX_ADDRL: // getting low byte of address
-					addr_l = data;
-					hex_state = HEX_DATA;
-					break;
-				case HEX_DATA: // getting data bytes
-					if(addr_h >= BOOTLOADER_ADDR_HI) {
-						// don't overwrite ourself!
-						break;
-					}
-					else if(addr_h == 0x00 && addr_l < 0x04) {
-						// the reset vector is to be moved
-						// up into the bootloader area
-						eeadrh = BOOTLOADER_ADDR_HI;
-						eeadr = addr_l;								
-					}
-					else {
-						// otherwise use the requested address
-						eeadrh = addr_h;
-						eeadr = addr_l;								
-					}
-					
-					// Write data byte into EEPROM
-					eecon1.7 = 1; //EEPGD
-					eecon1.2 = 1; //WREN
-					intcon.7 = 0; //GIE
-					eecon2 = 0x55;
-					eecon2 = 0xAA; // unlock sequence
-					eecon1.1 = 1; // WR
-					nop();
-					nop();
-					nop();
-					eecon1.1 = 0; // WR
-
-					// any more bytes to read?
-					if(!--bytes_to_read) {
-						// go back to read next block
-						hex_state = HEX_LEN;
-					}
-					else {
-						// 
-						++addr_l;
-					}
-					break;
-				}
-			}			
+		// read a full sysex buffer worth of characters
+		// from the serial port
+		for(i=0; i<sizeof(buffer); ++i) {	
+			while(!pir1.5);
+			((byte*)&buffer)[i] = rcreg;
 		}
+		P_LED1 = !P_LED1;
+		
+		// perform basic validation of the buffer structure
+		if(	(buffer.begin != MIDI_SYSEX_BEGIN) ||
+			(buffer.id0 != MY_SYSEX_ID0) ||
+			(buffer.id1 != MY_SYSEX_ID1) ||
+			(buffer.id2 != MY_SYSEX_ID2) ||
+			(buffer.end != MIDI_SYSEX_END)
+		){
+			error(2);
+		}
+		
+		// a zero sequence number indicates the end of the
+		// firmware upload. We do not return, instead the user
+		// must reset the device to restart it with the new firmware
+		if(!buffer.seq) {
+			success();
+		}
+		
+		// check that the sequence number matches what we're expecting...
+		// if not then we know something has gone wrong (we've missed
+		// some data!)
+		if(buffer.seq != seq) {
+			error(3);
+		}
+		
+		// increment the expected sequence number, avoiding zero, which
+		// has special meaning of an end of data marker...
+		if(++seq > 127) {
+			seq = 1;	
+		}	
+		
+		// Translate the data buffer into a format suitable for programming
+		// into the flash memory... shuffle each pair of data bytes so that 
+		// the two bytes containing 7 bit values are converted to a 14 bit word, i.e.
+		// -------+-------+
+		// 7654321076543210
+		// .AAAAAAA.BBBBBBB <-- from this
+		// ..AAAAAAABBBBBBB <-- to this
+		for(i=0; i<64; i+=2) {					
+			buffer.data[i+1] |= (buffer.data[i]<<7);
+			buffer.data[i] >>= 1;
+		}
+		
+		
+		// is this code destined for the first row of flash?
+		if(addr == 0x0000) { 
+			// bytes 0..7 are the reset vector (i.e. jump to the start of program code)
+			// We need to replace the firmware reset vector with the bootloader reset vector,
+			// but we also need to save the firmware reset vector into the bootloader memory
+			// area so that we can execute it from the bootloader when we want to start the
+			// firmware application....
+			memcpy(firmware_reset, &buffer.data[0], 8);
+			memcpy(&buffer.data[0], bootloader_reset, 8);
+			write_flash(); 								
+			
+			// now we save the firmware reset vector
+			addr = SAVED_RESET_VECTOR;
+			read_flash(); 									
+			memcpy(&buffer.data[2], firmware_reset, 8);	
+			write_flash();								
+			addr = 0x0000;			
+		}
+		else if(addr >= SAVED_RESET_VECTOR)	{
+			error(4); // prevent bootloader being overwritten
+		}
+		else {
+			// write row to flash
+			write_flash();
+		}
+		addr += 32;
 	}
 }
 
-void main( )
+////////////////////////////////////////////////////////
+// BOOTLOADER ENTRY POINT
+void main() 
 {	
 	osccon = 0b01111010; // 16MHz internal
 	
@@ -266,18 +328,18 @@ void main( )
 	
 	trisa =   0b11111011;
 	trisc =   0b11111011;
+	anselc 	= 0b00000000;
 
+	intcon.GIE = 0; // interrupts not used
+	
 	delay_ms(10);	// short delay to allow input line to settle	
 	if(!P_SWITCH) // is the switch pressed?
 		read_sysex();
 		
-	// Jump into the saved app reset vector
+	// otherwise jump into the saved app reset vector at 0x1E20
 	asm
 	{
-		MOVLP 0x37
-		GOTO  0x00
-	};		
-		
+		MOVLP 0x1E
+		GOTO 0x620
+	};				
 }
-
-

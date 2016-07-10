@@ -28,6 +28,9 @@
 // 
 /////////////////////////////////////////////////////////////////////////////////////////
 
+//#define FOR_CVOCD 1
+#define FOR_MIDIMERGE 1
+
 //
 // INCLUDE FILES
 //
@@ -61,17 +64,32 @@
 //
 // CONSTANTS
 //
-#define P_LED1				lata.2
-#define P_LED2				latc.2
-#define P_SWITCH 			portc.3
 
 #define MIDI_SYSEX_BEGIN    0xf0
 #define MIDI_SYSEX_END     	0xf7
 #define MY_SYSEX_ID0		0x00
 #define MY_SYSEX_ID1		0x7f
-#define MY_SYSEX_ID2		0x12
 
 #define SAVED_RESET_VECTOR 	0x1E20 
+
+#if FOR_CVOCD
+	#define P_LED1				lata.2
+	#define P_LED2				latc.2
+	#define P_SWITCH 			portc.3
+	#define TRISA_BITS			0b11111011
+	#define TRISC_BITS			0b11111011
+	#define WPUA_BITS			0b00000000
+	#define MY_SYSEX_ID2		0x12
+#elif FOR_MIDIMERGE
+	#define P_LED1				lata.2
+	#define P_LED2				latc.3
+	#define P_SWITCH 			porta.5
+	#define TRISA_BITS			0b11111011
+	#define TRISC_BITS			0b11110111
+	#define WPUA_BITS			0b00100000
+	#define MY_SYSEX_ID2		0x12
+#endif
+
 
 //
 // TYPE DEFS
@@ -201,7 +219,7 @@ void error(byte b)
 			delay_ms(200);
 		}		
 		delay_ms(255);
-		delay_ms(255);
+		//delay_ms(255);
 	}
 }
 
@@ -323,18 +341,18 @@ void main()
 	osccon = 0b01111010; // 16MHz internal
 	
 	//          76543210
-	txsta =   0b00000000;
+	//txsta =   0b00000000; - power on default
 	rcsta =   0b10110000;
 	baudcon = 0b00001000;
-	spbrgh = 0;		
+	//spbrgh = 0;		- power on default
 	spbrg = 31;		//31250
 	
-	trisa =   0b11111011;
-	trisc =   0b11111011;
+	trisa =   TRISA_BITS;
+	trisc =   TRISC_BITS;
 	anselc 	= 0b00000000;
-
-	intcon.GIE = 0; // interrupts not used
-	
+	wpua = WPUA_BITS;
+	option_reg.7 = 0; // weak pullups enabled
+		
 	delay_ms(10);	// short delay to allow input line to settle	
 	if(!P_SWITCH) // is the switch pressed?
 		read_sysex();

@@ -149,11 +149,11 @@ void read_flash()
 ////////////////////////////////////////////////////////
 // ERASE AND WRITE A ROW OF FLASH MEMORY
 // The target address is in the addr variable and must
-// be on a flash row boundary (32 words)
-// The data is read from 64 byte array buffer.data
+// be on a flash row boundary (16 words)
+// The data is read from 32 byte array buffer.data
 void write_flash()
 {
-	// ensure address is on 16-byte flash row boundary
+	// ensure address is on 16-word flash row boundary
 	eeadrl = (addr & 0xF0);
 	eeadrh = (addr >> 8);
 	

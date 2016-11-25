@@ -87,7 +87,7 @@
 	#define TRISA_BITS			0b11111011
 	#define TRISC_BITS			0b11110111
 	#define WPUA_BITS			0b00100000
-	#define MY_SYSEX_ID2		0x12
+	#define MY_SYSEX_ID2		0x13
 #endif
 
 

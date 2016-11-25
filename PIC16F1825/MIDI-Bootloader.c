@@ -81,8 +81,8 @@
 	#define WPUA_BITS			0b00000000
 	#define MY_SYSEX_ID2		0x12
 #elif FOR_MIDIMERGE
-	#define P_LED1				lata.2
-	#define P_LED2				latc.3
+	#define P_LED1				latc.3
+	#define P_LED2				lata.2
 	#define P_SWITCH 			porta.5
 	#define TRISA_BITS			0b11111011
 	#define TRISC_BITS			0b11110111

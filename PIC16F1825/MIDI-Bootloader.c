@@ -25,11 +25,13 @@
 //
 // VERSION HISTORY
 // 1	07MAY16	First version
+// 2	15DEC16	Support transistor switcher
 // 
 /////////////////////////////////////////////////////////////////////////////////////////
 
 //#define FOR_CVOCD 1
-#define FOR_MIDIMERGE 1
+//#define FOR_MIDIMERGE 1
+#define FOR_TRSWITCHER 1
 
 //
 // INCLUDE FILES
@@ -88,6 +90,14 @@
 	#define TRISC_BITS			0b11110111
 	#define WPUA_BITS			0b00100000
 	#define MY_SYSEX_ID2		0x13
+#elif FOR_TRSWITCHER
+	#define P_LED1				lata.5
+	#define P_LED2				latc.0
+	#define P_SWITCH 			porta.4
+	#define TRISA_BITS			0b11011111
+	#define TRISC_BITS			0b11111110
+	#define WPUA_BITS			0b00010000
+	#define MY_SYSEX_ID2		0x16
 #endif
 
 
@@ -349,6 +359,7 @@ void main()
 	
 	trisa =   TRISA_BITS;
 	trisc =   TRISC_BITS;
+	ansela 	= 0b00000000;
 	anselc 	= 0b00000000;
 	wpua = WPUA_BITS;
 	option_reg.7 = 0; // weak pullups enabled

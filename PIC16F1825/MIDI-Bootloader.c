@@ -26,12 +26,14 @@
 // VERSION HISTORY
 // 1	07MAY16	First version
 // 2	15DEC16	Support transistor switcher
+// 3	18MAY16	Support MIDI Hub
 // 
 /////////////////////////////////////////////////////////////////////////////////////////
 
 //#define FOR_CVOCD 1
 //#define FOR_MIDIMERGE 1
-#define FOR_TRSWITCHER 1
+//#define FOR_TRSWITCHER 1
+#define FOR_MIDIHUB 1
 
 //
 // INCLUDE FILES
@@ -98,6 +100,14 @@
 	#define TRISC_BITS			0b11111110
 	#define WPUA_BITS			0b00010000
 	#define MY_SYSEX_ID2		0x16
+#elif FOR_MIDIHUB
+	#define P_LED1				latc.0
+	#define P_LED2				lata.2
+	#define P_SWITCH 			porta.4
+	#define TRISA_BITS			0b11111011
+	#define TRISC_BITS			0b11111110
+	#define WPUA_BITS			0b00000000
+	#define MY_SYSEX_ID2		0x17
 #endif
 
 

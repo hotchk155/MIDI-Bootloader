@@ -67,7 +67,7 @@
 #define MIDI_SYSEX_BEGIN    0xf0
 #define MIDI_SYSEX_END     	0xf7
 #define MY_SYSEX_ID0		0x00
-#define MY_SYSEX_ID1		0x7f
+#define MY_SYSEX_ID1		0x14
 
 #if FOR_SYNCHOLE
 	#define P_LED1				lata.4

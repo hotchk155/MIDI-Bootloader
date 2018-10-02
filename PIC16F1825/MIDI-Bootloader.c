@@ -27,13 +27,15 @@
 // 1	07MAY16	First version
 // 2	15DEC16	Support transistor switcher
 // 3	18MAY16	Support MIDI Hub
+// 4	02OCT18	Support SMT MIDI switcher
 // 
 /////////////////////////////////////////////////////////////////////////////////////////
 
 //#define FOR_CVOCD 1
 //#define FOR_MIDIMERGE 1
 //#define FOR_TRSWITCHER 1
-#define FOR_MIDIHUB 1
+//#define FOR_MIDIHUB 1
+#define FOR_SMTSWITCHER 1
 
 //
 // INCLUDE FILES
@@ -108,6 +110,15 @@
 	#define TRISC_BITS			0b11111110
 	#define WPUA_BITS			0b00000000
 	#define MY_SYSEX_ID2		0x17
+#elif FOR_SMTSWITCHER	
+	#define P_LED1				lata.4
+	#define P_LED2				latc.0
+	#define P_SWITCH 			porta.3
+	#define TRISA_BITS			0b11101111
+	#define TRISC_BITS			0b11111110
+	#define WPUA_BITS			0b00001000
+	#define MY_SYSEX_ID2		0x20	
+	#define APFCON0_MASK		0x84
 #endif
 
 
@@ -358,22 +369,30 @@ void read_sysex()
 // BOOTLOADER ENTRY POINT
 void main() 
 {	
+	// BANK1
 	osccon = 0b01111010; // 16MHz internal
-	
+	trisa =   TRISA_BITS;
+	trisc =   TRISC_BITS;
+	option_reg.7 = 0; // weak pullups enabled
+
+	// BANK2
+#ifdef APFCON0_MASK		
+	apfcon0 = APFCON0_MASK;
+#endif 		
+
+	// BANK3
 	//          76543210
 	//txsta =   0b00000000; - power on default
 	rcsta =   0b10110000;
 	baudcon = 0b00001000;
 	//spbrgh = 0;		- power on default
 	spbrg = 31;		//31250
-	
-	trisa =   TRISA_BITS;
-	trisc =   TRISC_BITS;
 	ansela 	= 0b00000000;
 	anselc 	= 0b00000000;
+	
+	// BANK4
 	wpua = WPUA_BITS;
-	option_reg.7 = 0; // weak pullups enabled
-		
+
 	delay_ms(10);	// short delay to allow input line to settle	
 	if(!P_SWITCH) // is the switch pressed?
 		read_sysex();

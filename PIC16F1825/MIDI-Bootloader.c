@@ -28,14 +28,15 @@
 // 2	15DEC16	Support transistor switcher
 // 3	18MAY16	Support MIDI Hub
 // 4	02OCT18	Support SMT MIDI switcher
+// 5	02JAN19	Save space by avoiding delay_ms(). Ignore active sense messages
 // 
 /////////////////////////////////////////////////////////////////////////////////////////
 
-//#define FOR_CVOCD 1
+#define FOR_CVOCD 1
 //#define FOR_MIDIMERGE 1
 //#define FOR_TRSWITCHER 1
 //#define FOR_MIDIHUB 1
-#define FOR_SMTSWITCHER 1
+//#define FOR_SMTSWITCHER 1
 
 //
 // INCLUDE FILES
@@ -73,6 +74,7 @@
 
 #define MIDI_SYSEX_BEGIN    0xf0
 #define MIDI_SYSEX_END     	0xf7
+#define MIDI_ACTIVE_SENSE   0xfe
 #define MY_SYSEX_ID0		0x00
 #define MY_SYSEX_ID1		0x7f
 
@@ -238,6 +240,18 @@ void write_flash()
 }
 
 ////////////////////////////////////////////////////////
+// SHORT DELAY
+// NB: Saves a lot of memory over standard delay_ms()
+// library function. Even with multiple calls!
+void delay() {
+	volatile byte i=0;
+	while(--i) {
+		volatile byte j=0;
+		while(--j) nop();
+	}
+}
+
+////////////////////////////////////////////////////////
 // ERROR INDICATION
 void error(byte b) 
 {
@@ -245,12 +259,14 @@ void error(byte b)
 	for(;;) {
 		for(i=0; i<b; ++i) {
 			P_LED2 = 1;
-			delay_ms(200);
+			delay();
+			delay();
 			P_LED2 = 0;
-			delay_ms(200);
+			delay();
+			delay();
 		}		
-		delay_ms(255);
-		//delay_ms(255);
+		delay();
+		delay();
 	}
 }
 
@@ -260,10 +276,10 @@ void success() {
 	for(;;) {
 		P_LED1 = 1;
 		P_LED2 = 0;
-		delay_ms(100);
+		delay();
 		P_LED1 = 0;
 		P_LED2 = 1;
-		delay_ms(100);		
+		delay();
 	}
 }
 
@@ -287,9 +303,13 @@ void read_sysex()
 			
 		// read a full sysex buffer worth of characters
 		// from the serial port
-		for(i=0; i<sizeof(buffer); ++i) {	
+		for(i=0; i<sizeof(buffer);) {	
 			while(!pir1.5);
-			((byte*)&buffer)[i] = rcreg;
+			byte ch = rcreg;
+			((byte*)&buffer)[i] = ch;
+			if(ch != MIDI_ACTIVE_SENSE) {
+				++i;
+			}
 		}
 		P_LED1 = !P_LED1;
 		
@@ -393,7 +413,7 @@ void main()
 	// BANK4
 	wpua = WPUA_BITS;
 
-	delay_ms(10);	// short delay to allow input line to settle	
+	delay();// short delay to allow input line to settle	
 	if(!P_SWITCH) // is the switch pressed?
 		read_sysex();
 		

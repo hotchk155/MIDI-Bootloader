@@ -7,6 +7,8 @@ Type=0
 Warnings=1
 Model=0
 Config=0
+Last ExtIdx=1
+Last Dir=D:\GitHub\cvocd.a\firmware\
 [Files]
 Count=1
 File0=MIDI-Bootloader.c

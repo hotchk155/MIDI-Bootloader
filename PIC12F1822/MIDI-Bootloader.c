@@ -26,6 +26,8 @@
 // [0xF0] [0x00] [0x7F] [0x14] [0x00] [dummy0] ... [dummy31] [0xF7]
 //
 // VERSION HISTORY
+// ..ported from PIC16F1825
+// 5	01JUL19	Save space by avoiding delay_ms(). Ignore active sense messages
 // 
 /////////////////////////////////////////////////////////////////////////////////////////
 
@@ -66,6 +68,7 @@
 
 #define MIDI_SYSEX_BEGIN    0xf0
 #define MIDI_SYSEX_END     	0xf7
+#define MIDI_ACTIVE_SENSE   0xfe
 #define MY_SYSEX_ID0		0x00
 #define MY_SYSEX_ID1		0x14
 
@@ -76,9 +79,7 @@
 	#define TRISA_BITS			0b11101011
 	#define WPUA_BITS			0b00001000
 	#define MY_SYSEX_ID2		0x14
-	#define FLASH_2K
 #endif
-
 
 //
 // TYPE DEFS
@@ -92,12 +93,9 @@ struct {
 	byte id1;		// manufacturer id 1
 	byte id2;		// manufacturer id 2
 	byte seq;		// 1..127 = incrementing sequence number, 0 = end of data
-	byte data[64];	// data buffer for program memory (for sysex each 14 bit word is translated to 2 bytes 0..127)		
+	byte data[64];	// data buffer for program memory (for sysex each 14 bit word is translated to 2 bytes 0..127)
+	byte end;		// sysex end marker
 } buffer;
-#define BUF_SIZE (1+1+1+1+1+32+1)
-//For some reason if data is only 32 bytes (actual size needed) then
-//ROM code size jumps by ~70 words!
-
 
 //
 // GLOBAL DATA
@@ -199,6 +197,18 @@ void write_flash()
 }
 
 ////////////////////////////////////////////////////////
+// SHORT DELAY
+// NB: Saves a lot of memory over standard delay_ms()
+// library function. Even with multiple calls!
+void delay() {
+	volatile byte i=0;
+	while(--i) {
+		volatile byte j=0;
+		while(--j) nop();
+	}
+}
+
+////////////////////////////////////////////////////////
 // ERROR INDICATION
 void error(byte b) 
 {
@@ -206,11 +216,14 @@ void error(byte b)
 	for(;;) {
 		for(i=0; i<b; ++i) {
 			P_LED2 = 1;
-			delay_ms(200);
+			delay();
+			delay();
 			P_LED2 = 0;
-			delay_ms(200);
+			delay();
+			delay();
 		}		
-		delay_ms(255);
+		delay();
+		delay();
 	}
 }
 
@@ -220,10 +233,10 @@ void success() {
 	for(;;) {
 		P_LED1 = 1;
 		P_LED2 = 0;
-		delay_ms(100);
+		delay();
 		P_LED1 = 0;
 		P_LED2 = 1;
-		delay_ms(100);		
+		delay();
 	}
 }
 
@@ -247,9 +260,13 @@ void read_sysex()
 			
 		// read a full sysex buffer worth of characters
 		// from the serial port
-		for(i=0; i<BUF_SIZE; ++i) {	
+		for(i=0; i<sizeof(buffer);) {	
 			while(!pir1.5);
-			((byte*)&buffer)[i] = rcreg;
+			byte ch = rcreg;
+			((byte*)&buffer)[i] = ch;
+			if(ch != MIDI_ACTIVE_SENSE) {
+				++i;
+			}
 		}
 		P_LED1 = !P_LED1;
 		
@@ -258,7 +275,7 @@ void read_sysex()
 			(buffer.id0 != MY_SYSEX_ID0) ||
 			(buffer.id1 != MY_SYSEX_ID1) ||
 			(buffer.id2 != MY_SYSEX_ID2) ||
-			(buffer.data[32] != MIDI_SYSEX_END)
+			(buffer.end != MIDI_SYSEX_END)
 		){
 			error(2);
 		}
@@ -329,24 +346,28 @@ void read_sysex()
 // BOOTLOADER ENTRY POINT
 void main() 
 {	
+	// BANK1
 	osccon = 0b01111010; // 16MHz internal
+	trisa =   TRISA_BITS;
+	option_reg.7 = 0; // weak pullups enabled
 
-	apfcon.7=1; // RX on RA5
-	apfcon.2=1;	// TX on RA4
-		
-	ansela = 0;
-	trisa = TRISA_BITS;
-	wpua = WPUA_BITS;
-	option_reg.7 = 0; // weak pullups enabled	
-			
+	// BANK2
+	apfcon.7 = 1; // RX on RA5
+	apfcon.2 = 1; // TX on RA4
+	
+	// BANK3
 	//          76543210
 	//txsta =   0b00000000; - power on default
 	rcsta =   0b10110000;
 	baudcon = 0b00001000;
 	//spbrgh = 0;		- power on default
 	spbrg = 31;		//31250
-				
-	delay_ms(10);	// short delay to allow input line to settle	
+	ansela 	= 0b00000000;
+	
+	// BANK4
+	wpua = WPUA_BITS;
+
+	delay();// short delay to allow input line to settle	
 	if(!P_SWITCH) // is the switch pressed?
 		read_sysex();
 

@@ -70,7 +70,7 @@
 #define MIDI_SYSEX_END     	0xf7
 #define MIDI_ACTIVE_SENSE   0xfe
 #define MY_SYSEX_ID0		0x00
-#define MY_SYSEX_ID1		0x14
+#define MY_SYSEX_ID1		0x7f
 
 #if FOR_SYNCHOLE
 	#define P_LED1				lata.4
@@ -93,7 +93,7 @@ struct {
 	byte id1;		// manufacturer id 1
 	byte id2;		// manufacturer id 2
 	byte seq;		// 1..127 = incrementing sequence number, 0 = end of data
-	byte data[64];	// data buffer for program memory (for sysex each 14 bit word is translated to 2 bytes 0..127)
+	byte data[32];	// data buffer for program memory (for sysex each 14 bit word is translated to 2 bytes 0..127)
 	byte end;		// sysex end marker
 } buffer;
 
@@ -273,7 +273,7 @@ void read_sysex()
 		// perform basic validation of the buffer structure
 		if(	(buffer.begin != MIDI_SYSEX_BEGIN) ||
 			(buffer.id0 != MY_SYSEX_ID0) ||
-			(buffer.id1 != MY_SYSEX_ID1) ||
+			//(buffer.id1 != MY_SYSEX_ID1) ||
 			(buffer.id2 != MY_SYSEX_ID2) ||
 			(buffer.end != MIDI_SYSEX_END)
 		){
@@ -346,14 +346,17 @@ void read_sysex()
 // BOOTLOADER ENTRY POINT
 void main() 
 {	
-	// BANK1
+	// BANK0
 	osccon = 0b01111010; // 16MHz internal
+	
+	// BANK1
 	trisa =   TRISA_BITS;
 	option_reg.7 = 0; // weak pullups enabled
 
 	// BANK2
-	apfcon.7 = 1; // RX on RA5
-	apfcon.2 = 1; // TX on RA4
+	apfcon = 0b10000100;
+	//apfcon.7 = 1; // RX on RA5
+	//apfcon.2 = 1; // TX on RA4
 	
 	// BANK3
 	//          76543210

@@ -8,8 +8,9 @@ Warnings=1
 Model=0
 Config=0
 [Files]
-Count=1
+Count=2
 File0=MIDI-Bootloader.c
+File1=..\..\midiwall\firmware\midiwall.__c
 [Browser]
 UseSysHeaders=1
 UseNovoHeaders=1

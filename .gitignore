@@ -60,6 +60,5 @@ Desktop.ini
 *.obj
 *.stat
 *.tree
-*.__f
 makefile.*
 MIDI-Hub.hex

@@ -29,14 +29,16 @@
 // 3	18MAY16	Support MIDI Hub
 // 4	02OCT18	Support SMT MIDI switcher
 // 5	02JAN19	Save space by avoiding delay_ms(). Ignore active sense messages
+// 6	28APR20 Support Relay Switcher
 // 
 /////////////////////////////////////////////////////////////////////////////////////////
 
-#define FOR_CVOCD 1
+//#define FOR_CVOCD 1
 //#define FOR_MIDIMERGE 1
 //#define FOR_TRSWITCHER 1
 //#define FOR_MIDIHUB 1
 //#define FOR_SMTSWITCHER 1
+#define FOR_RELAYSWITCHER 1
 
 //
 // INCLUDE FILES
@@ -121,6 +123,15 @@
 	#define WPUA_BITS			0b00001000
 	#define MY_SYSEX_ID2		0x20	
 	#define APFCON0_MASK		0x84
+#elif FOR_RELAYSWITCHER	
+	#define P_LED1				lata.5
+	#define P_LED2				lata.5 // same
+	#define P_SWITCH 			porta.4
+	#define TRISA_BITS			0b11011111
+	#define TRISC_BITS			0b11111111
+	#define WPUA_BITS			0b00010000
+	#define MY_SYSEX_ID2		0x23	
+	#define APFCON0_MASK		0b00000000
 #endif
 
 

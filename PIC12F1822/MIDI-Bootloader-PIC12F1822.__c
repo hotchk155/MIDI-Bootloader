@@ -8,7 +8,7 @@ Warnings=1
 Model=0
 Config=0
 [Files]
-Count=2
+Count=1
 File0=MIDI-Bootloader.c
 File1=..\..\midiwall\firmware\midiwall.__c
 [Browser]

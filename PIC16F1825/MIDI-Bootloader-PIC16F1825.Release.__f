@@ -1,0 +1,4 @@
+[Compiler]
+Extra=
+[Linker]
+Extra=-rb 0x1E25

@@ -62,3 +62,5 @@ Desktop.ini
 *.tree
 makefile.*
 MIDI-Hub.hex
+PIC16F15345/build/*
+PIC16F15345/dist/*

@@ -364,6 +364,8 @@ void main() {
     TRISA=TRISA_BITS;
     TRISB=TRISB_BITS;
     TRISC=TRISC_BITS;
+    LATA=0;
+    LATC=0;
     
     // disable analog inputs
     ANSELA = 0;

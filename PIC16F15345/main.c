@@ -1,51 +1,35 @@
-/*
- * File:   main.c
- * Author: jason
- *
- * Created on 26 January 2023, 11:02
- */
+/////////////////////////////////////////////////////////////////////////////////////////
+// MIDI BOOTLOADER FOR PIC16F15345
+// (c) 2023 Sixty Four Pixels Ltd
+// 
+// VERSION HISTORY
+// 1	05JUN23	First version
+// 
+/////////////////////////////////////////////////////////////////////////////////////////
 
-#define SAVED_RESET_VECTOR 	0x1D40 // must be on 32-byte boundary
-// program memory map
+/////////////////////////////////////////////////////////////////////////////////////////
+// MEMORY MAP
 //
 // 0000 bootloader reset vector
 // 0004 application interrupt vector
-// 0005 application code
-// :
+// 0005 application code...
 // 1D40 saved application reset vector (must be on a 32-byte FLASH page boundary)
-// 1D44 bootloader code
-// :
+// 1D44 bootloader code...
 // 1F7F storage area flash (SAF) used for application settings
-// :
 // 1FFF end of flash
 //
-// 
-// build bootloader with options
-//
-// Project options|XC8 Linker
+// MPLABX Build Options: Project options|Linker
 // Memory Model
 //      - ROM Ranges: default,-1F7F-1FFF
-//
 // Additional options:  
 //      Code offset = 1d44
 //      -Wl,-pmyReset=0,-preset_vec=1d40h,-ptext=1d44h
+//
+/////////////////////////////////////////////////////////////////////////////////////////
 
-// Bootloader reset vector
-// MOVLP 0x1D        001 1100       7 bits->PCLATH
-// GOTO 0x553   101 0101 0111      11 bits->PC(10:0) PCLATH<6:3> -> PC<14:11>
+/////////////////////////////////////////////////////////////////////////////////////////
+// SYSEX FILE FORMAT
 // 
-
-//      654 3210       
-//      --- -
-//      001 1100
-//
-//       --- -
-//      0000 0101 0101 0111   553
-
-
-//      0000 0101 0101 0111   553
-//      0001 1101 0101 0111   1D53
-//
 // Firmware provided in a MIDI System Exclusive file with 32 words (64 bytes) 
 // of program code per sysex buffer. 
 // Sysex "manufacturer ID" is 0x00 0x7F 0x12
@@ -59,11 +43,7 @@
 // [0xF0] [0x00] [0x7F] [0x12] [nnnn] [data0] ... [data63] [0xF7]
 // [0xF0] [0x00] [0x7F] [0x12] [0x00] [dummy0] ... [dummy63] [0xF7]
 //
-// VERSION HISTORY
-// 1	07MAY16	First version
-// 
 /////////////////////////////////////////////////////////////////////////////////////////
-
 
 // CONFIG1
 #pragma config FEXTOSC = OFF    // External Oscillator mode selection bits (Oscillator not enabled)
@@ -105,13 +85,23 @@
 // Use project enums instead of #define for ON and OFF.
 
 //
+// MEMORY ORGANISATION
+// 
+#define SAVED_RESET_VECTOR 	0x1D40 // must be on 32-byte boundary
+asm("PSECT myReset,class=CODE,reloc=2,delta=2");
+asm("CustomReset:");
+asm("ljmp start");
+
+//
 // INCLUDE FILES
 //
 #define _XTAL_FREQ 32000000
 #include <xc.h>
 #include <string.h>
 
-
+//
+// CONSTANTS
+//
 #define P_LED1 LATAbits.LATA5
 #define P_LED2 LATCbits.LATC0
 #define P_KEY1 PORTCbits.RC3
@@ -128,61 +118,17 @@
 #define WPUB_BITS   0b10000000
 #define WPUC_BITS   0b11001000
 
-
-typedef uint8_t byte;	
-
-// Replacement reset vector to take us into the bootloader at address 0x1E30. 
-//	0x0000	0x319E  MOVLP 0x1E  
-//	0x0001	0x2E25  GOTO  0x625 <-- lower 11 bits of address
-//	0x0002	0x0000  NOP
-//	0x0003	0x0000  NOP
-//#pragma DATA 0x0000, 0x319E, 0x2E25, 0x0000, 0x0000
-
-// Initial data for the location that will store the application reset vector
-//  0x1E20 	018A 	CLRF PCLATH	(ensure relative jump is within page 0)
-//	0x1E21 	0000 	NOP			(replaced by original reset vector byte 0)
-//  0x1E22 	0000 	NOP			(replaced by original reset vector byte 1)
-//	0x1E23 	CLRF 	PCLATH		(replaced by original reset vector byte 2)
-//	0x1E24 	CLRF 	PCL			(replaced by original reset vector byte 3)
-// 	0x1E25 	..bootloader..
-//#pragma DATA 0x1E20, 0x018A, 0x0000, 0x0000, 0x018A, 0x0082
-
-asm("PSECT myReset,class=CODE,reloc=2,delta=2");
-asm("CustomReset:");
-asm("ljmp start");
-//asm("GLOBAL _savedVectorReset");
-
-//void __at(0x0000) vectorReset(void)  {
-//    asm("GOTO 0x1e30");
-//}
-
- //void __at(0x1E20) savedVectorReset(void)  {
- //   asm("CLRF PCLATH");
- //   asm("NOP");
- //   asm("NOP");
- //   asm("CLRF PCLATH");
- //   asm("CLRF PCL");
-//}
-
-//
-// CONSTANTS
-//
-
 #define MIDI_SYSEX_BEGIN    0xf0
 #define MIDI_SYSEX_END     	0xf7
 #define MIDI_ACTIVE_SENSE   0xfe
 #define MY_SYSEX_ID0		0x00
 #define MY_SYSEX_ID1		0x7f
-
-
-
 #define MY_SYSEX_ID2		0x25
-
 
 //
 // TYPE DEFS
 //
-
+typedef uint8_t byte;	
 
 // Define the structure of the sysex buffers containing firmware update
 struct {
@@ -208,10 +154,9 @@ byte firmware_reset[8];
 // Address register for program memory read and write operations
 int addr;
 
-// Working variables
+// Working variables (global- do not use stack)
 byte i;
 byte seq;
-
 
 ////////////////////////////////////////////////////////
 // READ A ROW OF FLASH MEMORY 
@@ -279,19 +224,6 @@ void write_flash()
 	
 	NVMCON1bits.WREN = 0;	// disable writes
 }
-#if 0
-////////////////////////////////////////////////////////
-// SHORT DELAY
-// NB: Saves a lot of memory over standard delay_ms()
-// library function. Even with multiple calls!
-void delay() {
-	volatile byte i=0;
-	while(--i) {
-		volatile byte j=0;
-		while(--j) nop();
-	}
-}
-#endif
 
 ////////////////////////////////////////////////////////
 // ERROR INDICATION
@@ -343,7 +275,6 @@ void read_sysex()
 		// read a full sysex buffer worth of characters
 		// from the serial port
 		for(i=0; i<sizeof(buffer);) {	
-			//while(!pir1.5); 
             while(!PIR3bits.RC1IF);
 			byte ch = RC1REG;
 			((byte*)&buffer)[i] = ch;
@@ -425,59 +356,47 @@ void read_sysex()
 	}
 }
 
-
+////////////////////////////////////////////////////////
+// MAIN ENTRY POINT
 void main() {
+    
+    // configure GPIO
     TRISA=TRISA_BITS;
     TRISB=TRISB_BITS;
     TRISC=TRISC_BITS;
+    
+    // disable analog inputs
     ANSELA = 0;
     ANSELB = 0;
     ANSELC = 0;
+    
+    // enable weak pullups
     WPUA=WPUA_BITS;
     WPUB=WPUB_BITS;
     WPUC=WPUC_BITS;
-    LATA=0;
-    LATC=0;
-    // Pin RC4 PPS register set to point to UART TX
-    RC4PPS = 0x0F;
     
-    // UART RX PPS register set to point to RC5
-    RX1DTPPS = 0x15;
-    
-    //PIE3 = 
-    //PIR3bits.RC1IF = 0;     
-    //PIE3bits.RC1IE = 1;     
-    //PIR3bits.TX1IF = 0;     
-    //PIE3bits.TX1IE = 0;     
-    
-    BAUD1CON = 0b00001000; // synchronous bit polarity 
-    //BAUD1CONbits.SCKP = 0;  // synchronous bit polarity 
-    //BAUD1CONbits.BRG16 = 1; // enable 16 bit brg
-    //BAUD1CONbits.WUE = 0;   // wake up enable off
-    //BAUD1CONbits.ABDEN = 0; // auto baud detect
-    
-    //TX1STA = 0b00000000;
-            
-    //TX1STAbits.TX9 = 0;     // 8 bit transmission
-    //TX1STAbits.SYNC = 0;    // async mode
-    //TX1STAbits.SENDB = 0;   // break character
-    //TX1STAbits.BRGH = 0;    // high baudrate 
-    //TX1STAbits.TX9D = 0;    // bit 9
+    // setup alternative pin functions
+    RC4PPS = 0x0F;      // Pin RC4 PPS register set to point to UART TX
+    RX1DTPPS = 0x15;    // UART RX PPS register set to point to RC5
 
+    // configure baud rate (31250)
+    BAUD1CON = 0b00001000; 
+    SP1BRGH = 0;            
+    SP1BRGL = 63;           
+
+    // configure serial port for receive
     RC1STA= 0b10110000;
     
-    //TX1STAbits.TXEN = 1;    // transmit enable
-    //RC1STAbits.SPEN = 1;    // serial port enable    
-    //RC1STAbits.RX9 = 0;     // 8 bit operation
-    //RC1STAbits.SREN = 1;    // enable receiver
-    //RC1STAbits.CREN = 1;    // continuous receive enable
-
-    SP1BRGH = 0;            // brg high byte
-    SP1BRGL = 63;            // brg low byte (31250)	 
-    
-    //__delay_ms(100);        
+    __delay_ms(100);        // allow inputs to settle
     if(!(P_KEY1) && !(P_KEY2)) {
+        // key combination pressed to start bootloader
         read_sysex();
     }
-	asm("GOTO 0x1D40");    
+    
+    // otherwise jump to the application reset vector, running the application
+	asm("GOTO 0x1D40");    // address must match SAVED_RESET_VECTOR
 }
+
+//
+// EOF
+//

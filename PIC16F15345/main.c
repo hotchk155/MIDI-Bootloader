@@ -197,14 +197,17 @@ void write_flash()
 	NVMCON2 = 0x55;                 // special unlock sequence
 	NVMCON2 = 0xAA;		    
 	NVMCON1bits.WR = 1;                 // kick off the erase
+    NVMCON1bits.FREE = 0;           
 
     // LOAD THE WRITE LATCHES
     // Prepare to write new data into the cleared row. The sequence is to 
     // load the 32 word write buffer (latches), then kick off the write	
-	NVMCON1bits.LWLO = 1;           // indicate we're setting up the latches
+    NVMADRL = (byte)(addr & 0xE0); 
+    NVMADRH = (byte)(addr >> 8);
 	for(i=0; i<64; i+=2) 
 	{
-		NVMDATL = buffer.data[i+1]; // set up the word to load into the next word latch
+        NVMCON1bits.LWLO = (i<62);  //until the last latch LWLO=1, set LWLO=0 on the last latch
+		NVMDATL = buffer.data[i+1]; // set up the word to load into the next word 
 		NVMDATH = buffer.data[i];
 		NVMCON2 = 0x55;             // special unlock sequence
 		NVMCON2 = 0xAA;		
@@ -212,16 +215,6 @@ void write_flash()
 		++NVMADRL;                  // and on to the next address...
 	}
 
-	// PERFORM THE WRITE TO FLASH
-	NVMCON1bits.LWLO = 0;           // ready to write from latches to FLASH
-    NVMADRL = (byte)(addr & 0xE0);        // set the row address
-    NVMADRH = (byte)(addr >> 8);
-	NVMDATL = buffer.data[1];
-	NVMDATH = buffer.data[0];
-	NVMCON2 = 0x55;                 // special unlock sequence
-	NVMCON2 = 0xAA;		
-	NVMCON1bits.WR = 1;             // start write
-	
 	NVMCON1bits.WREN = 0;	// disable writes
 }
 

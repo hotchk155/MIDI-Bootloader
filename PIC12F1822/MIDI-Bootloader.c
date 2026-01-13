@@ -6,8 +6,7 @@
 //
 // SourceBoost C
 //
-//#define FOR_SYNCHOLE 1
-#define FOR_MIDIWALL 1
+#define FOR_SYNCHOLE 1
 // --TARGET = PIC12F1822
 // Use linker option: -rb 0x0625
 // Bootloader code is loaded to high memory (address 0x0625)
@@ -29,7 +28,7 @@
 // VERSION HISTORY
 // ..ported from PIC16F1825
 // 5	01JUL19	Save space by avoiding delay_ms(). Ignore active sense messages
-// 6	30SEP19 Support MIDIWALL
+// 6	13JAN26	Dont init USART unless button pressed 
 // 
 /////////////////////////////////////////////////////////////////////////////////////////
 
@@ -81,13 +80,6 @@
 	#define TRISA_BITS			0b11101011
 	#define WPUA_BITS			0b00001000
 	#define MY_SYSEX_ID2		0x14
-#endif
-#if FOR_MIDIWALL
-	#define P_LED2				lata.5
-	#define P_SWITCH 			porta.3
-	#define TRISA_BITS			0b11011110
-	#define WPUA_BITS			0b00001000
-	#define MY_SYSEX_ID2		0x22
 #endif
 
 //
@@ -221,9 +213,7 @@ void delay() {
 // ERROR INDICATION
 void error(byte b) 
 {
-#ifdef P_LED1
 	P_LED1 = 0;
-#endif 
 	for(;;) {
 		for(i=0; i<b; ++i) {
 			P_LED2 = 1;
@@ -242,14 +232,10 @@ void error(byte b)
 // SUCCESS INDICATION
 void success() {
 	for(;;) {
-#ifdef P_LED1	
 		P_LED1 = 1;
-#endif
 		P_LED2 = 0;
 		delay();
-#ifdef P_LED1	
 		P_LED1 = 0;
-#endif
 		P_LED2 = 1;
 		delay();
 	}
@@ -267,9 +253,7 @@ void read_sysex()
 	read_flash();
 	memcpy(bootloader_reset, &buffer.data, 8); 
 
-#ifdef P_LED1
 	P_LED1 = 1;
-#endif
 	P_LED2 = 1;
 
 	// there is no way back...
@@ -285,11 +269,8 @@ void read_sysex()
 				++i;
 			}
 		}
-#ifdef P_LED1
 		P_LED1 = !P_LED1;
-#else
-		P_LED2 = !P_LED2;
-#endif		
+		
 		// perform basic validation of the buffer structure
 		if(	(buffer.begin != MIDI_SYSEX_BEGIN) ||
 			(buffer.id0 != MY_SYSEX_ID0) ||
@@ -372,45 +353,31 @@ void main()
 	// BANK1
 	trisa =   TRISA_BITS;
 	option_reg.7 = 0; // weak pullups enabled
-			
-#ifdef	FOR_SYNCHOLE	
-	// BANK2
-	apfcon = 0b10000100;
-	//apfcon.7 = 1; // RX on RA5
-	//apfcon.2 = 1; // TX on RA4
-	
-	// BANK3
-	//          76543210
-	//txsta =   0b00000000; - power on default
-	rcsta =   0b10110000;
-	baudcon = 0b00001000;
-	//spbrgh = 0;		- power on default
-	spbrg = 31;		//31250
-#endif	
+
+	// BANK 3
 	ansela 	= 0b00000000;
 	
 	// BANK4
-	wpua = WPUA_BITS;
+	//wpua = WPUA_BITS;
 
 	delay();// short delay to allow input line to settle	
-	if(!P_SWITCH) {// is the switch pressed?
-
-#ifdef FOR_MIDIWALL
-		// device is MIDI bus powered, so wait for the switch to be released 
-		// before configuring MIDI port, so we don't get garbage info on the
-		// power when powering up
-		while(!P_SWITCH); 
+	if(!P_SWITCH) { // (BANK0) is the switch pressed  ?
+	
+		// BANK2
+		apfcon = 0b10000100;
+		//apfcon.7 = 1; // RX on RA5
+		//apfcon.2 = 1; // TX on RA4
 		
+		// BANK3
 		//          76543210
 		//txsta =   0b00000000; - power on default
 		rcsta =   0b10110000;
 		baudcon = 0b00001000;
 		//spbrgh = 0;		- power on default
 		spbrg = 31;		//31250
-#endif	
 		read_sysex();
 	}
-
+	
 	// otherwise jump into the saved app reset vector at 0x0620
 	asm
 	{

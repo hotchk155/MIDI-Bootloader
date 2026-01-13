@@ -1,5 +1,5 @@
 [Settings]
-Active Directory=D:\GitHub\MIDI-Bootloader\PIC12F1822\
+Active Directory=C:\GitHub\MIDI-Bootloader\PIC12F1822\
 Target=PIC12F1822
 Active Compiler=BoostC
 Active Config=Release
